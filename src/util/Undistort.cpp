@@ -263,10 +263,14 @@ Undistort::~Undistort()
 	if(remapY != 0) delete[] remapY;
 }
 
+// 从文件中读取标定参数 
+// 相机内参
+// gamma 
+// vignette
 Undistort* Undistort::getUndistorterForFile(std::string configFilename, std::string gammaFilename, std::string vignetteFilename)
 {
 	printf("Reading Calibration from file %s",configFilename.c_str());
-
+	// 打开文件
 	std::ifstream f(configFilename.c_str());
 	if (!f.good())
 	{
@@ -278,7 +282,9 @@ Undistort* Undistort::getUndistorterForFile(std::string configFilename, std::str
 
 	printf(" ... found!\n");
 	std::string l1;
+	// 读取第一行
 	std::getline(f,l1);
+	// ???这就关掉了？
 	f.close();
 
 	float ic[10];
@@ -312,11 +318,6 @@ Undistort* Undistort::getUndistorterForFile(std::string configFilename, std::str
 			if(!u->isValid()) {delete u; return 0; }
 		}
 	}
-
-
-
-
-
     // clean model selection implementation.
     else if(std::sscanf(l1.c_str(), "KannalaBrandt %f %f %f %f %f %f %f %f",
             &ic[0], &ic[1], &ic[2], &ic[3],

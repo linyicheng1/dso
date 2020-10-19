@@ -173,6 +173,7 @@ KeyFrameDisplay::~KeyFrameDisplay()
 
 bool KeyFrameDisplay::refreshPC(bool canRefresh, float scaledTH, float absTH, int mode, float minBS, int sparsity)
 {
+	
 	if(canRefresh)
 	{
 		needRefresh = needRefresh ||
@@ -204,13 +205,14 @@ bool KeyFrameDisplay::refreshPC(bool canRefresh, float scaledTH, float absTH, in
 
 	for(int i=0;i<numSparsePoints;i++)
 	{
+		
 		/* display modes:
 		 * my_displayMode==0 - all pts, color-coded
 		 * my_displayMode==1 - normal points
 		 * my_displayMode==2 - active only
 		 * my_displayMode==3 - nothing
 		 */
-
+		
 		if(my_displayMode==1 && originalInputSparse[i].status != 1 && originalInputSparse[i].status!= 2) continue;
 		if(my_displayMode==2 && originalInputSparse[i].status != 1) continue;
 		if(my_displayMode>2) continue;
@@ -303,17 +305,18 @@ bool KeyFrameDisplay::refreshPC(bool canRefresh, float scaledTH, float absTH, in
 	if(numGLBufferGoodPoints > numGLBufferPoints)
 	{
 		numGLBufferPoints = vertexBufferNumPoints*1.3;
-		vertexBuffer.Reinitialise(pangolin::GlArrayBuffer, numGLBufferPoints, GL_FLOAT, 3, GL_DYNAMIC_DRAW );
-		colorBuffer.Reinitialise(pangolin::GlArrayBuffer, numGLBufferPoints, GL_UNSIGNED_BYTE, 3, GL_DYNAMIC_DRAW );
+		//vertexBuffer.Reinitialise(pangolin::GlArrayBuffer, numGLBufferPoints, GL_FLOAT, 3, GL_DYNAMIC_DRAW );
+		//colorBuffer.Reinitialise(pangolin::GlArrayBuffer, numGLBufferPoints, GL_UNSIGNED_BYTE, 3, GL_DYNAMIC_DRAW );
 	}
-	vertexBuffer.Upload(tmpVertexBuffer, sizeof(float)*3*numGLBufferGoodPoints, 0);
-	colorBuffer.Upload(tmpColorBuffer, sizeof(unsigned char)*3*numGLBufferGoodPoints, 0);
+	//vertexBuffer.Upload(tmpVertexBuffer, sizeof(float)*3*numGLBufferGoodPoints, 0);
+	//colorBuffer.Upload(tmpColorBuffer, sizeof(unsigned char)*3*numGLBufferGoodPoints, 0);
 	bufferValid=true;
 	delete[] tmpColorBuffer;
 	delete[] tmpVertexBuffer;
 
 
 	return true;
+	
 }
 
 
