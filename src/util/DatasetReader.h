@@ -388,6 +388,31 @@ public:
 		width = undistort->getSize()[0];
 		height = undistort->getSize()[1];
 		printf("ImageFolderReader: got %d files in %s!\n", (int)files.size(), path.c_str());
+		{ // 临时加的一段
+			std::string path = "/home/lyc/slam/dataSet/data_odometry_poses/dataset/poses/00.txt";
+			std::ifstream file;
+			std::string s;
+			file.open(path.c_str());
+			//std::getline(file, s);
+			while (!file.eof())
+			{
+				std::getline(file, s);
+				if (!s.empty())
+				{
+					std::stringstream ss(s);
+					std::string data;
+					Eigen::Vector3f t;
+					//std::getline(ss, data, ',');
+					std::getline(ss, data, ' ');
+					std::stringstream(data) >> t[0];
+					std::getline(ss, data, ' ');
+					std::stringstream(data) >> t[1];
+					std::getline(ss, data, ' ');
+					std::stringstream(data) >> t[2];
+					trace.push_back(t);
+				}
+			}
+		}
 	}
 	// 设置全局标定参数
 	void setGlobalCalibration()
@@ -424,6 +449,7 @@ public:
 		return getImage_internal(id, 0);
 	}
 	Undistort *undistort;
+	std::vector<Eigen::Vector3f> trace;
 
 private:
 	std::string path;
@@ -465,6 +491,132 @@ private:
 				std::stringstream(time) >> e;
 				exposures.push_back(e / 1e6);
 			}
+		}
+	}
+	ImageAndExposure *getImage_internal(int id, int unused)
+	{
+		MinimalImageB *minimg = IOWrap::readImageBW_8U(files[id]);
+		// cv::Mat test(cv::Size(minimg->w, minimg->h), cv::IMREAD_GRAYSCALE);
+		// memcpy(test.data,minimg->data,minimg->w * minimg->h);
+		// cv::imshow("test", test);
+		// cv::waitKey(0);
+		ImageAndExposure *ret2 = undistort->undistort<unsigned char>(
+			minimg,
+			(exposures.size() == 0 ? 1.0f : exposures[id]),
+			(timestamps.size() == 0 ? 0.0 : timestamps[id]));
+		delete minimg;
+		return ret2;
+	}
+};
+
+// 读取kitti数据集
+class readerKitti
+{
+public:
+	// 构造函数
+	readerKitti(std::string path, std::string calibFile, std::string gammaFile, std::string vignetteFile)
+	{
+		// 记录图片数据位置和标定参数位置
+		this->path = path;
+		this->calibfile = calibFile;
+		// 获取所有图像名称的string + 时间戳 + 曝光
+		getdir(path + "/image_0", files);
+		loadTimestamps();
+		// 拿到标定参数 TODO
+		undistort = Undistort::getUndistorterForFile(calibFile, gammaFile, vignetteFile);
+		// 具体的标定数据记录
+		widthOrg = undistort->getOriginalSize()[0];
+		heightOrg = undistort->getOriginalSize()[1];
+		width = undistort->getSize()[0];
+		height = undistort->getSize()[1];
+		printf("ImageFolderReader: got %d files in %s!\n", (int)files.size(), path.c_str());
+		{ // 临时加的一段
+			std::string path = "/home/lyc/slam/dataSet/data_odometry_poses/dataset/poses/03.txt";
+			FILE *fp = fopen(path.c_str(), "r");
+			float m[3][4];
+			//std::getline(file, s);
+			while (!feof(fp))
+			{
+
+				if (fscanf(fp, "%f %f %f %f %f %f %f %f %f %f %f %f",
+						   &m[0][0], &m[0][1], &m[0][2], &m[0][3],
+						   &m[1][0], &m[1][1], &m[1][2], &m[1][3],
+						   &m[2][0], &m[2][1], &m[2][2], &m[2][3]) == 12)
+				{
+					Eigen::Vector3f t;
+					t[0] = m[0][3];
+					t[1] = m[1][3];
+					t[2] = m[2][3];
+					trace.push_back(t);
+				}
+			}
+		}
+	}
+	// 设置全局标定参数
+	void setGlobalCalibration()
+	{
+		int w_out, h_out;
+		Eigen::Matrix3f K;
+		// 获取设置参数
+		getCalibMono(K, w_out, h_out);
+		// 得到内部全局
+		setGlobalCalib(w_out, h_out, K);
+	}
+	inline float *getPhotometricGamma()
+	{
+		if (undistort == 0 || undistort->photometricUndist == 0)
+			return 0;
+		return undistort->photometricUndist->getG();
+	}
+	int getNumImages()
+	{
+		return files.size();
+	}
+	double getTimestamp(int id)
+	{
+		if (timestamps.size() == 0)
+			return id * 0.1f;
+		if (id >= (int)timestamps.size())
+			return 0;
+		if (id < 0)
+			return 0;
+		return timestamps[id];
+	}
+	ImageAndExposure *getImage(int id, bool forceLoadDirectly = false)
+	{
+		return getImage_internal(id, 0);
+	}
+	Undistort *undistort;
+	std::vector<Eigen::Vector3f> trace;
+
+private:
+	std::string path;
+	std::string calibfile;
+	std::vector<std::string> files;
+	std::vector<double> timestamps;
+	std::vector<float> exposures;
+	int width, height;
+	int widthOrg, heightOrg;
+	void getCalibMono(Eigen::Matrix3f &K, int &w, int &h)
+	{
+		K = undistort->getK().cast<float>();
+		w = undistort->getSize()[0];
+		h = undistort->getSize()[1];
+	}
+
+	void loadTimestamps()
+	{
+		std::ifstream fTimes;
+		std::string s;
+		std::string strPathTimes = path + "/times.txt";
+		fTimes.open(strPathTimes.c_str());
+
+		while (!fTimes.eof())
+		{
+			std::getline(fTimes, s);
+			double t;
+			std::stringstream(s) >> t;
+			timestamps.push_back(t);
 		}
 	}
 	ImageAndExposure *getImage_internal(int id, int unused)

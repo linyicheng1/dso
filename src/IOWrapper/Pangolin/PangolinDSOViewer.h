@@ -79,12 +79,13 @@ public:
     virtual void join() override;
 
     virtual void reset() override;
+	std::vector<Eigen::Vector3f> true_trace;
 private:
 
 	bool needReset;
 	void reset_internal();
 	void drawConstraints();
-
+	void drawTrace(); 
 	boost::thread runThread;
 	bool running;
 	int w,h;

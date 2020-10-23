@@ -356,10 +356,18 @@ void param_init()
 	prefetch = false;
 	start = 0;
 	end = 100000;
-	source = "/home/lyc/slam/dataSet/MH_01_easy/mav0/cam0";
-	calib = "/home/lyc/slam/dataSet/MH_01_easy/mav0/cam0/camera.txt";
-	vignette = "/home/lyc/slam/dataSet/lab-module-csc_2019-02-01-14-28-51_InOut/calibration_files/cam2_vignette.png";
-	gammaCalib = "/home/lyc/slam/dataSet/lab-module-csc_2019-02-01-14-28-51_InOut/calibration_files/cam2_response.txt";
+	source = "/media/lyc/文档/下载/data_odometry_gray/dataset/sequences/03";
+	calib = "/home/lyc/slam/dataSet/00/camera.txt";
+	//
+	//source = "/home/lyc/slam/dataSet/MH_01_easy/mav0/cam0";
+	//calib = "/home/lyc/slam/dataSet/MH_01_easy/mav0/cam0/camera.txt";
+
+	//vignette = "/home/lyc/slam/dataSet/sequence_50/vignette.png";
+	//gammaCalib = "/home/lyc/slam/dataSet/sequence_50/pcalib.txt";
+
+	//vignette = "/home/lyc/slam/dataSet/lab-module-csc_2019-02-01-14-28-51_InOut/calibration_files/cam2_vignette.png";
+	//gammaCalib = "/home/lyc/slam/dataSet/lab-module-csc_2019-02-01-14-28-51_InOut/calibration_files/cam2_response.txt";
+	
 	rescale = 1;
 	playbackSpeed = 0;
 	debugSaveImages = false;
@@ -375,7 +383,7 @@ void param_init()
 			printf("system call returned 42 - what are the odds?. This is only here to shut up the compiler.\n");
 		printf("SAVE IMAGES!\n");
 	}
-	mode = 1;
+	mode = 2;
 	if (mode == 0)
 	{
 		printf("PHOTOMETRIC MODE WITH CALIBRATION!\n");
@@ -410,7 +418,7 @@ int main(int argc, char **argv)
 	boost::thread exThread = boost::thread(exitThread);
 	// 从文件夹中读取标定参数、图片数据等
 	//ImageFolderReader *reader = new ImageFolderReader(source, calib, gammaCalib, vignette);
-	readerEuRoC *reader = new readerEuRoC(source, calib, gammaCalib, vignette);
+	auto *reader = new readerKitti(source, calib, gammaCalib, vignette);
 	reader->setGlobalCalibration();
 
 	if (setting_photometricCalibration > 0 && reader->getPhotometricGamma() == 0)
@@ -442,7 +450,7 @@ int main(int argc, char **argv)
 		viewer = new IOWrap::PangolinDSOViewer(wG[0], hG[0], false);
 		fullSystem->outputWrapper.push_back(viewer);
 	}
-
+	viewer->true_trace = reader->trace;
 	if (useSampleOutput)
 		fullSystem->outputWrapper.push_back(new IOWrap::SampleOutputWrapper());
 
@@ -481,7 +489,7 @@ int main(int argc, char **argv)
 		clock_t started = clock();
 		double sInitializerOffset = 0;
 
-		for (int ii = 1000; ii < (int)idsToPlay.size(); ii++)
+		for (int ii = 0; ii < (int)idsToPlay.size(); ii++)
 		{
 			if (!fullSystem->initialized) // if not initialized: reset start time.
 			{
