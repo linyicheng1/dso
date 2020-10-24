@@ -504,7 +504,7 @@ int main(int argc, char **argv)
 			if (preload)
 				img = preloadedImages[ii];
 			else
-				img = reader->getImage(i);
+				img = reader->getImage(i);// 获取图片一张
 			// cv::Mat test(cv::Size(img->w,img->h),cv::IMREAD_GRAYSCALE);
 			// for(int i=0;i<img->w*img->h;i++)
 			// {
@@ -527,7 +527,7 @@ int main(int argc, char **argv)
 					skipFrame = true;
 				}
 			}
-
+			// 往系统中添加一张图片
 			if (!skipFrame)
 				fullSystem->addActiveFrame(img, i);
 

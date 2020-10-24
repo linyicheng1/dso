@@ -30,11 +30,13 @@
 namespace dso
 {
 
+// 添加了曝光信息的图片
 
 class ImageAndExposure
 {
 public:
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+	// 原始图片数据，采用float，因为
 	float* image;			// irradiance. between 0 and 256
 	int w,h;				// width and height;
 	double timestamp;

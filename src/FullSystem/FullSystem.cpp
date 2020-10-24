@@ -267,37 +267,42 @@ void FullSystem::printResult(std::string file)
 	myfile.close();
 }
 
-
+// 对当前帧进行跟踪
+// fh为处理好的图像数据
 Vec4 FullSystem::trackNewCoarse(FrameHessian* fh)
 {
-
+ 
 	assert(allFrameHistory.size() > 0);
 	// set pose initialization.
-
+	// 把当前帧给pangolin可视化进行显示，两者并行操作更快
     for(IOWrap::Output3DWrapper* ow : outputWrapper)
         ow->pushLiveFrame(fh);
-
-
-
+	// 上一次的参考帧
 	FrameHessian* lastF = coarseTracker->lastRef;
-
+	// 
 	AffLight aff_last_2_l = AffLight(0,0);
 
 	std::vector<SE3,Eigen::aligned_allocator<SE3>> lastF_2_fh_tries;
+	// 如果只有两帧，肯定没有初始化吧
 	if(allFrameHistory.size() == 2)
 		for(unsigned int i=0;i<lastF_2_fh_tries.size();i++) lastF_2_fh_tries.push_back(SE3());
 	else
-	{
+	{// 正常情况进行处理
+		// 拿到前两帧的数据
 		FrameShell* slast = allFrameHistory[allFrameHistory.size()-2];
 		FrameShell* sprelast = allFrameHistory[allFrameHistory.size()-3];
+		// 前两次的增量位置
 		SE3 slast_2_sprelast;
 		SE3 lastF_2_slast;
 		{	// lock on global pose consistency!
 			boost::unique_lock<boost::mutex> crlock(shellPoseMutex);
+			// 得到前三-->前二的增量，前二-->前一的增量
 			slast_2_sprelast = sprelast->camToWorld.inverse() * slast->camToWorld;
 			lastF_2_slast = slast->camToWorld.inverse() * lastF->shell->camToWorld;
+			// 认为和上一帧一样
 			aff_last_2_l = slast->aff_g2l;
 		}
+		// 认为前一次与当前帧一样
 		SE3 fh_2_slast = slast_2_sprelast;// assumed to be the same as fh_2_slast.
 
 
@@ -313,7 +318,7 @@ Vec4 FullSystem::trackNewCoarse(FrameHessian* fh)
 		// if they don't work they will only be tried on the coarsest level, which is super fast anyway.
 		// also, if tracking rails here we loose, so we really, really want to avoid that.
 		for(float rotDelta=0.02; rotDelta < 0.05; rotDelta++)
-		{
+		{// 旋转图像进行一定的运动，得到各种可能的运动
 			lastF_2_fh_tries.push_back(fh_2_slast.inverse() * lastF_2_slast * SE3(Sophus::Quaterniond(1,rotDelta,0,0), Vec3(0,0,0)));			// assume constant motion.
 			lastF_2_fh_tries.push_back(fh_2_slast.inverse() * lastF_2_slast * SE3(Sophus::Quaterniond(1,0,rotDelta,0), Vec3(0,0,0)));			// assume constant motion.
 			lastF_2_fh_tries.push_back(fh_2_slast.inverse() * lastF_2_slast * SE3(Sophus::Quaterniond(1,0,0,rotDelta), Vec3(0,0,0)));			// assume constant motion.
@@ -363,11 +368,13 @@ Vec4 FullSystem::trackNewCoarse(FrameHessian* fh)
 	Vec5 achievedRes = Vec5::Constant(NAN);
 	bool haveOneGood = false;
 	int tryIterations=0;
+	// 开始遍历所有可能的运动
 	for(unsigned int i=0;i<lastF_2_fh_tries.size();i++)
 	{
 		AffLight aff_g2l_this = aff_last_2_l;
 		SE3 lastF_2_fh_this = lastF_2_fh_tries[i];
-		bool trackingIsGood = coarseTracker->trackNewestCoarse(
+		// 开始track
+		bool trackingIsGood = coarseTracker->trackNewestCoarse( 
 				fh, lastF_2_fh_this, aff_g2l_this,
 				pyrLevelsUsed-1,
 				achievedRes);	// in each level has to be at least as good as the last try.
@@ -417,7 +424,7 @@ Vec4 FullSystem::trackNewCoarse(FrameHessian* fh)
             break;
 
 	}
-
+	// 所有方向都不行
 	if(!haveOneGood)
 	{
         printf("BIG ERROR! tracking failed entirely. Take predictred pose and hope we may somehow recover.\n");
@@ -456,7 +463,7 @@ Vec4 FullSystem::trackNewCoarse(FrameHessian* fh)
 						<< tryIterations << "\n";
 	}
 
-
+	// 当前残差，平均光流
 	return Vec4(achievedRes[0], flowVecs[0], flowVecs[1], flowVecs[2]);
 }
 
@@ -798,16 +805,23 @@ void FullSystem::flagPointsForRemoval()
 
 }
 
-
+/**
+ * @brief DSO slam函数入口，往系统中添加一张图片
+ * @param image 图片，经过曝光处理
+ * @param id 图片对应id
+ * */
 void FullSystem::addActiveFrame( ImageAndExposure* image, int id )
 {
-
+	// 如果当前丢失，则不进行处理
     if(isLost) return;
+	// 线程锁
 	boost::unique_lock<boost::mutex> lock(trackMutex);
 
 
 	// =========================== add into allFrameHistory =========================
+	// new 一个关键帧
 	FrameHessian* fh = new FrameHessian();
+	// shell 包含位置、仿射变换、时间戳等信息
 	FrameShell* shell = new FrameShell();
 	shell->camToWorld = SE3(); 		// no lock required, as fh is not used anywhere yet.
 	shell->aff_g2l = AffLight(0,0);
@@ -819,12 +833,12 @@ void FullSystem::addActiveFrame( ImageAndExposure* image, int id )
 
 
 	// =========================== make Images / derivatives etc. =========================
+	// 添加曝光时间
 	fh->ab_exposure = image->exposure_time;
+	// 调用makeImages函数
+	// 得到图像金字塔并计算得到梯度方向
     fh->makeImages(image->image, &Hcalib);
-
-
-
-
+	// 如果没有初始化进行一些初始化的操作
 	if(!initialized)
 	{
 		// use initializer!
@@ -850,30 +864,37 @@ void FullSystem::addActiveFrame( ImageAndExposure* image, int id )
 	}
 	else	// do front-end operation.
 	{
+		// 正常情况下的一些处理
 		// =========================== SWAP tracking reference?. =========================
 		if(coarseTracker_forNewKF->refFrameID > coarseTracker->refFrameID)
-		{
+		{// 判断是否需要更新跟踪参考帧，有新的参考帧则更新
+			// 线程加锁
 			boost::unique_lock<boost::mutex> crlock(coarseTrackerSwapMutex);
-			CoarseTracker* tmp = coarseTracker; coarseTracker=coarseTracker_forNewKF; coarseTracker_forNewKF=tmp;
+			// 更新参考帧
+			CoarseTracker* tmp = coarseTracker; 
+			coarseTracker=coarseTracker_forNewKF; 
+			coarseTracker_forNewKF=tmp;
 		}
-
-
+		// 粗略的进行位置跟踪
 		Vec4 tres = trackNewCoarse(fh);
+		// 如果得到完全错误的数据则认为当前已经丢失了
 		if(!std::isfinite((double)tres[0]) || !std::isfinite((double)tres[1]) || !std::isfinite((double)tres[2]) || !std::isfinite((double)tres[3]))
         {
             printf("Initial Tracking failed: LOST!\n");
 			isLost=true;
             return;
         }
-
+		// 判断当前是否需要将当前图片作为一个关键帧
 		bool needToMakeKF = false;
 		if(setting_keyframesPerSecond > 0)
 		{
+			// 时间均匀设定关键帧，这肯定不行啊
 			needToMakeKF = allFrameHistory.size()== 1 ||
 					(fh->shell->timestamp - allKeyFramesHistory.back()->timestamp) > 0.95f/setting_keyframesPerSecond;
 		}
 		else
 		{
+			// 根据设定的规则确定是否添加关键字，后面用到具体再看规则
 			Vec2 refToFh=AffLight::fromToVecExposure(coarseTracker->lastRef->ab_exposure, fh->ab_exposure,
 					coarseTracker->lastRef_aff_g2l, fh->shell->aff_g2l);
 
@@ -886,29 +907,26 @@ void FullSystem::addActiveFrame( ImageAndExposure* image, int id )
 					2*coarseTracker->firstCoarseRMSE < tres[0];
 
 		}
-
-
-
-
+		// 发布到关键帧显示
         for(IOWrap::Output3DWrapper* ow : outputWrapper)
             ow->publishCamPose(fh->shell, &Hcalib);
-
-
-
-
+		// 解除线程锁
 		lock.unlock();
+		// 传送当前帧到后端
 		deliverTrackedFrame(fh, needToMakeKF);
 		return;
 	}
 }
+
+// 传送当前图片到
 void FullSystem::deliverTrackedFrame(FrameHessian* fh, bool needKF)
 {
-
-
+	// 线性化操作
 	if(linearizeOperation)
 	{
 		if(goStepByStep && lastRefStopID != coarseTracker->refFrameID)
 		{
+			// 图片img
 			MinimalImageF3 img(wG[0], hG[0], fh->dI);
 			IOWrap::displayImage("frameToTrack", &img);
 			while(true)
@@ -942,39 +960,43 @@ void FullSystem::deliverTrackedFrame(FrameHessian* fh, bool needKF)
 	}
 }
 
+// 地图构建线程
 void FullSystem::mappingLoop()
 {
 	boost::unique_lock<boost::mutex> lock(trackMapSyncMutex);
 
 	while(runMapping)
 	{
+		// 等待frame的到来
 		while(unmappedTrackedFrames.size()==0)
 		{
 			trackedFrameSignal.wait(lock);
 			if(!runMapping) return;
 		}
-
+		// 拿到一帧数据
 		FrameHessian* fh = unmappedTrackedFrames.front();
 		unmappedTrackedFrames.pop_front();
 
-
 		// guaranteed to make a KF for the very first two tracked frames.
+		// 保证前两帧的数据当做KF来处理的
 		if(allKeyFramesHistory.size() <= 2)
 		{
 			lock.unlock();
 			makeKeyFrame(fh);
 			lock.lock();
 			mappedFrameSignal.notify_all();
-			continue;
+			continue;// 处理完成就结束了
 		}
 
 		if(unmappedTrackedFrames.size() > 3)
 			needToKetchupMapping=true;
 
-
+		// 如果当前有需要处理的
 		if(unmappedTrackedFrames.size() > 0) // if there are other frames to tracke, do that first.
 		{
+			// 调用函数 makeNonKeyFrame
 			lock.unlock();
+			// 对于非关键帧的处理
 			makeNonKeyFrame(fh);
 			lock.lock();
 
@@ -982,10 +1004,12 @@ void FullSystem::mappingLoop()
 			{
 				FrameHessian* fh = unmappedTrackedFrames.front();
 				unmappedTrackedFrames.pop_front();
-				{
+				{  
 					boost::unique_lock<boost::mutex> crlock(shellPoseMutex);
 					assert(fh->shell->trackingRef != 0);
+					// 作为粗略跟踪的结果作为初始值
 					fh->shell->camToWorld = fh->shell->trackingRef->camToWorld * fh->shell->camToTrackingRef;
+					// 调用函数设置初始值
 					fh->setEvalPT_scaled(fh->shell->camToWorld.inverse(),fh->shell->aff_g2l);
 				}
 				delete fh;
@@ -1008,6 +1032,7 @@ void FullSystem::mappingLoop()
 				lock.lock();
 			}
 		}
+		// 调用函数notify_all,唤醒所有等待的线程
 		mappedFrameSignal.notify_all();
 	}
 	printf("MAPPING FINISHED!\n");
@@ -1023,7 +1048,7 @@ void FullSystem::blockUntilMappingIsFinished()
 	mappingThread.join();
 
 }
-
+// 对非关键帧数据进行处理
 void FullSystem::makeNonKeyFrame( FrameHessian* fh)
 {
 	// needs to be set by mapping thread. no lock required since we are in mapping thread.
@@ -1033,11 +1058,12 @@ void FullSystem::makeNonKeyFrame( FrameHessian* fh)
 		fh->shell->camToWorld = fh->shell->trackingRef->camToWorld * fh->shell->camToTrackingRef;
 		fh->setEvalPT_scaled(fh->shell->camToWorld.inverse(),fh->shell->aff_g2l);
 	}
-
+	// 大致对其得到结果就行了
 	traceNewCoarse(fh);
 	delete fh;
 }
 
+// 对关键帧数据进行处理
 void FullSystem::makeKeyFrame( FrameHessian* fh)
 {
 	// needs to be set by mapping thread
@@ -1047,14 +1073,13 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
 		fh->shell->camToWorld = fh->shell->trackingRef->camToWorld * fh->shell->camToTrackingRef;
 		fh->setEvalPT_scaled(fh->shell->camToWorld.inverse(),fh->shell->aff_g2l);
 	}
-
+	// 先得到一个粗略的结果
 	traceNewCoarse(fh);
-
+	// 线程锁，真正对关键帧进行优化
 	boost::unique_lock<boost::mutex> lock(mapMutex);
-
+	
 	// =========================== Flag Frames to be Marginalized. =========================
 	flagFramesForMarginalization(fh);
-
 
 	// =========================== add New Frame to Hessian Struct. =========================
 	fh->idx = frameHessians.size();
@@ -1064,8 +1089,6 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
 	ef->insertFrame(fh, &Hcalib);
 
 	setPrecalcValues();
-
-
 
 	// =========================== add new residuals for old points =========================
 	int numFwdResAdde=0;
@@ -1083,24 +1106,14 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
 			numFwdResAdde+=1;
 		}
 	}
-
-
-
-
 	// =========================== Activate Points (& flag for marginalization). =========================
 	activatePointsMT();
 	ef->makeIDX();
-
-
-
 
 	// =========================== OPTIMIZE ALL =========================
 
 	fh->frameEnergyTH = frameHessians.back()->frameEnergyTH;
 	float rmse = optimize(setting_maxOptIterations);
-
-
-
 
 
 	// =========================== Figure Out if INITIALIZATION FAILED =========================
@@ -1123,18 +1136,10 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
 		}
 	}
 
-
-
     if(isLost) return;
-
-
-
 
 	// =========================== REMOVE OUTLIER =========================
 	removeOutliers();
-
-
-
 
 	{
 		boost::unique_lock<boost::mutex> crlock(coarseTrackerSwapMutex);
@@ -1147,12 +1152,7 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
         coarseTracker_forNewKF->debugPlotIDepthMapFloat(outputWrapper);
 	}
 
-
 	debugPlot("post Optimize");
-
-
-
-
 
 
 	// =========================== (Activate-)Marginalize Points =========================
@@ -1165,13 +1165,8 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
 			ef->lastNullspaces_affB);
 	ef->marginalizePointsF();
 
-
-
 	// =========================== add new Immature points & new residuals =========================
 	makeNewTraces(fh, 0);
-
-
-
 
 
     for(IOWrap::Output3DWrapper* ow : outputWrapper)
@@ -1180,16 +1175,11 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
         ow->publishKeyframes(frameHessians, false, &Hcalib);
     }
 
-
-
 	// =========================== Marginalize Frames =========================
 
 	for(unsigned int i=0;i<frameHessians.size();i++)
 		if(frameHessians[i]->flaggedForMarginalization)
 			{marginalizeFrame(frameHessians[i]); i=0;}
-
-
-
 	printLogLine();
     //printEigenValLine();
 

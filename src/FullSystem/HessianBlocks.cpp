@@ -124,38 +124,43 @@ void FrameHessian::release()
 	immaturePoints.clear();
 }
 
-
+// 在传入一帧图像的初始调用
+// color 为图像
+// HCalib 为标定的参数
 void FrameHessian::makeImages(float* color, CalibHessian* HCalib)
 {
-
+	// 遍历使用的金字塔层数
 	for(int i=0;i<pyrLevelsUsed;i++)
 	{
+		// 创建金字塔大小的图片 图片是三层的 像素 / dx / dy
 		dIp[i] = new Eigen::Vector3f[wG[i]*hG[i]];
+		// 创建金字塔大小的图片，保存梯度平方信息，用于筛选得到点
 		absSquaredGrad[i] = new float[wG[i]*hG[i]];
 	}
+	// dI 为原始图片，指向金字塔最顶层的图片
 	dI = dIp[0];
 
-
+	// 最顶层，和原始图像保持一致
 	// make d0
 	int w=wG[0];
 	int h=hG[0];
 	for(int i=0;i<w*h;i++)
 		dI[i][0] = color[i];
-
+	// 遍历金字塔所有层数
 	for(int lvl=0; lvl<pyrLevelsUsed; lvl++)
 	{
+		// 得到当前金字塔图像大小
 		int wl = wG[lvl], hl = hG[lvl];
+		// 当前指针指向对应的金字塔图片
 		Eigen::Vector3f* dI_l = dIp[lvl];
-
+		// 梯度指针指向金字塔梯度图片
 		float* dabs_l = absSquaredGrad[lvl];
 		if(lvl>0)
-		{
+		{// 从第二层开始，最顶层已经赋值了
 			int lvlm1 = lvl-1;
 			int wlm1 = wG[lvlm1];
 			Eigen::Vector3f* dI_lm = dIp[lvlm1];
-
-
-
+			// 向下采样得到金字塔的图像信息，TODO这里应该可以进行一定的加速处理
 			for(int y=0;y<hl;y++)
 				for(int x=0;x<wl;x++)
 				{
@@ -165,24 +170,24 @@ void FrameHessian::makeImages(float* color, CalibHessian* HCalib)
 												dI_lm[2*x+1 + 2*y*wlm1+wlm1][0]);
 				}
 		}
-
+		// 从第二行开始计算到倒数第二行
 		for(int idx=wl;idx < wl*(hl-1);idx++)
 		{
+			// 计算梯度
 			float dx = 0.5f*(dI_l[idx+1][0] - dI_l[idx-1][0]);
 			float dy = 0.5f*(dI_l[idx+wl][0] - dI_l[idx-wl][0]);
-
-
+			// 避免无穷大的情况
 			if(!std::isfinite(dx)) dx=0;
 			if(!std::isfinite(dy)) dy=0;
-
+			// 记录一下梯度
 			dI_l[idx][1] = dx;
 			dI_l[idx][2] = dy;
-
-
+			// 得到绝对值
 			dabs_l[idx] = dx*dx+dy*dy;
 
 			if(setting_gammaWeightsPixelSelect==1 && HCalib!=0)
 			{
+				// 计算梯度，注意这里要考虑相机参数对梯度的影响
 				float gw = HCalib->getBGradOnly((float)(dI_l[idx][0]));
 				dabs_l[idx] *= gw*gw;	// convert to gradient of original color space (before removing response).
 			}
