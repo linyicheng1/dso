@@ -426,32 +426,37 @@ EFResidual* EnergyFunctional::insertResidual(PointFrameResidual* r)
 	r->efResidual = efr;
 	return efr;
 }
+// 往误差函数中添加一帧数据
 EFFrame* EnergyFunctional::insertFrame(FrameHessian* fh, CalibHessian* Hcalib)
 {
+	// 新建一个帧误差节点
 	EFFrame* eff = new EFFrame(fh);
+	// id 按顺序排
 	eff->idx = frames.size();
+	// 插入到frames内
 	frames.push_back(eff);
 
 	nFrames++;
+	// 指针相互关联
 	fh->efFrame = eff;
-
+	// H矩阵重新设定大小
+	// b矩阵重新设定大小
 	assert(HM.cols() == 8*nFrames+CPARS-8);
 	bM.conservativeResize(8*nFrames+CPARS);
 	HM.conservativeResize(8*nFrames+CPARS,8*nFrames+CPARS);
 	bM.tail<8>().setZero();
 	HM.rightCols<8>().setZero();
 	HM.bottomRows<8>().setZero();
-
+	// 标志位，当前还没有计算得到可用的H，b矩阵
 	EFIndicesValid = false;
 	EFAdjointsValid=false;
 	EFDeltaValid=false;
-
+	// 调用函数
 	setAdjointsF(Hcalib);
 	makeIDX();
-
-
+	
 	for(EFFrame* fh2 : frames)
-	{
+	{// 遍历所有需要优化的误差帧
         connectivityMap[(((uint64_t)eff->frameID) << 32) + ((uint64_t)fh2->frameID)] = Eigen::Vector2i(0,0);
 		if(fh2 != eff)
             connectivityMap[(((uint64_t)fh2->frameID) << 32) + ((uint64_t)eff->frameID)] = Eigen::Vector2i(0,0);

@@ -176,8 +176,11 @@ namespace dso
 				}
 
 				openImagesMutex.lock();
+				// 发布图像
+				// 实时的视频数据
 				if (videoImgChanged)
 					texVideo.Upload(internalVideoImg->data, GL_BGR, GL_UNSIGNED_BYTE);
+				// 关键帧数据
 				if (kfImgChanged)
 					texKFDepth.Upload(internalKFImg->data, GL_BGR, GL_UNSIGNED_BYTE);
 				if (resImgChanged)
@@ -453,25 +456,34 @@ namespace dso
 
 			model3DMutex.unlock();
 		}
+		/**
+		 * @brief 发布关键帧数据
+		 * @param frames 关键帧
+		 * @param final  
+		 * @param HCalib 标定参数
+		 * */
 		void PangolinDSOViewer::publishKeyframes(
 			std::vector<FrameHessian *> &frames,
 			bool final,
 			CalibHessian *HCalib)
 		{
+			// 设置为不显示，则直接返回
 			if (!setting_render_display3D)
 				return;
 			if (disableAllDisplay)
 				return;
-
+			// 线程锁
 			boost::unique_lock<boost::mutex> lk(model3DMutex);
 			for (FrameHessian *fh : frames)
 			{
+				// 遍历所有的关键帧
 				if (keyframesByKFID.find(fh->frameID) == keyframesByKFID.end())
 				{
 					KeyFrameDisplay *kfd = new KeyFrameDisplay();
 					keyframesByKFID[fh->frameID] = kfd;
 					keyframes.push_back(kfd);
 				}
+				// 根据id来设置关键帧
 				keyframesByKFID[fh->frameID]->setFromKF(fh, HCalib);
 			}
 		}
@@ -520,6 +532,7 @@ namespace dso
 		{
 			return setting_render_displayDepth;
 		}
+		// 发布深度图片，即图片中的点通过颜色来标记深度信息
 		void PangolinDSOViewer::pushDepthImage(MinimalImageB3 *image)
 		{
 
@@ -536,8 +549,9 @@ namespace dso
 			if (lastNMappingMs.size() > 10)
 				lastNMappingMs.pop_front();
 			last_map = time_now;
-
+			// 赋值图片数据
 			memcpy(internalKFImg->data, image->data, w * h * 3);
+			// 更新标志位
 			kfImgChanged = true;
 		}
 

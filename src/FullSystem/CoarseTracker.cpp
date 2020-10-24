@@ -44,7 +44,6 @@
 namespace dso
 {
 
-
 template<int b, typename T>
 T* allocAligned(int size, std::vector<T*> &rawPtrVec)
 {
@@ -55,15 +54,20 @@ T* allocAligned(int size, std::vector<T*> &rawPtrVec)
     return alignedPtr;
 }
 
-
+/**
+ * @brief 构造函数
+ * 
+ * */
 CoarseTracker::CoarseTracker(int ww, int hh) : lastRef_aff_g2l(0,0)
 {
 	// make coarse tracking templates.
+	// 遍历所有金字塔层级
 	for(int lvl=0; lvl<pyrLevelsUsed; lvl++)
 	{
+		// 得到当前金字塔层图像的大小
 		int wl = ww>>lvl;
         int hl = hh>>lvl;
-
+		// 调用函数 allocAligned,开辟内存空间
         idepth[lvl] = allocAligned<4,float>(wl*hl, ptrToDelete);
         weightSums[lvl] = allocAligned<4,float>(wl*hl, ptrToDelete);
         weightSums_bak[lvl] = allocAligned<4,float>(wl*hl, ptrToDelete);
@@ -131,26 +135,29 @@ void CoarseTracker::makeK(CalibHessian* HCalib)
 }
 
 
-
+// 给深度变量 idepth 赋值
 void CoarseTracker::makeCoarseDepthL0(std::vector<FrameHessian*> frameHessians)
 {
+	// 先赋初值为零
 	// make coarse tracking templates for latstRef.
 	memset(idepth[0], 0, sizeof(float)*w[0]*h[0]);
 	memset(weightSums[0], 0, sizeof(float)*w[0]*h[0]);
-
+	// 遍历所有的关键帧
 	for(FrameHessian* fh : frameHessians)
 	{
 		for(PointHessian* ph : fh->pointHessians)
 		{
+			// 遍历关键帧中的点
 			if(ph->lastResiduals[0].first != 0 && ph->lastResiduals[0].second == ResState::IN)
 			{
+				// r 指向 ph ，所有的数据都存储在ph->lastResiduals[0].first中
 				PointFrameResidual* r = ph->lastResiduals[0].first;
 				assert(r->efResidual->isActive() && r->target == lastRef);
 				int u = r->centerProjectedTo[0] + 0.5f;
 				int v = r->centerProjectedTo[1] + 0.5f;
 				float new_idepth = r->centerProjectedTo[2];
 				float weight = sqrtf(1e-3 / (ph->efPoint->HdiF+1e-12));
-
+				// 最终得到深度的数据
 				idepth[0][u+w[0]*v] += new_idepth *weight;
 				weightSums[0][u+w[0]*v] += weight;
 			}
@@ -720,24 +727,29 @@ bool CoarseTracker::trackNewestCoarse(
 }
 
 
-
+/**
+ * @brief 调试输出带有深度信息的图片
+ * 		  所有的深度数据都来自于 idepth 变量
+ * @param minID_pt 
+ * @param maxID_pt 
+ * @param wraps 
+ * */
 void CoarseTracker::debugPlotIDepthMap(float* minID_pt, float* maxID_pt, std::vector<IOWrap::Output3DWrapper*> &wraps)
 {
     if(w[1] == 0) return;
-
-
 	int lvl = 0;
-
 	{
 		std::vector<float> allID;
+		// 遍历最顶层所有像素点
 		for(int i=0;i<h[lvl]*w[lvl];i++)
-		{
+		{// 像素点的深度大于零，记录对应深度数据
 			if(idepth[lvl][i] > 0)
 				allID.push_back(idepth[lvl][i]);
 		}
+		// 对所有的深度数据进行排序
 		std::sort(allID.begin(), allID.end());
 		int n = allID.size()-1;
-
+		// 排序后的最大的深度和最小的深度信息
 		float minID_new = allID[(int)(n*0.05)];
 		float maxID_new = allID[(int)(n*0.95)];
 
@@ -773,11 +785,12 @@ void CoarseTracker::debugPlotIDepthMap(float* minID_pt, float* maxID_pt, std::ve
 			}
 		}
 
-
+		// 创建一个图片存储图片+深度信息
 		MinimalImageB3 mf(w[lvl], h[lvl]);
 		mf.setBlack();
 		for(int i=0;i<h[lvl]*w[lvl];i++)
-		{
+		{// 遍历所有的像素
+			// 赋值为当前的图片数据
 			int c = lastRef->dIp[lvl][i][0]*0.9f;
 			if(c>255) c=255;
 			mf.at(i) = Vec3b(c,c,c);
@@ -785,27 +798,35 @@ void CoarseTracker::debugPlotIDepthMap(float* minID_pt, float* maxID_pt, std::ve
 		int wl = w[lvl];
 		for(int y=3;y<h[lvl]-3;y++)
 			for(int x=3;x<wl-3;x++)
-			{
+			{// 遍历
+				// 当前点id
 				int idx=x+y*wl;
 				float sid=0, nid=0;
+				// 得到深度数据的指针
 				float* bp = idepth[lvl]+idx;
-
+				//   A
+				// C x D
+				//   B
+				// 判断周围的五个点
+				// sid为五个点的深度和 nid 为大于零的点个数
 				if(bp[0] > 0) {sid+=bp[0]; nid++;}
 				if(bp[1] > 0) {sid+=bp[1]; nid++;}
 				if(bp[-1] > 0) {sid+=bp[-1]; nid++;}
 				if(bp[wl] > 0) {sid+=bp[wl]; nid++;}
 				if(bp[-wl] > 0) {sid+=bp[-wl]; nid++;}
-
+				// 深度和大于零，且大于零的点个数大于等于3
 				if(bp[0] > 0 || nid >= 3)
 				{
+					// 这里应该是进行了一个归一化
 					float id = ((sid / nid)-minID) / ((maxID-minID));
+					// 在当前位置画一个圆，颜色根据id来确定
 					mf.setPixelCirc(x,y,makeJet3B(id));
 					//mf.at(idx) = makeJet3B(id);
 				}
 			}
         //IOWrap::displayImage("coarseDepth LVL0", &mf, false);
 
-
+		// 发布深度数据图片
         for(IOWrap::Output3DWrapper* ow : wraps)
             ow->pushDepthImage(&mf);
 

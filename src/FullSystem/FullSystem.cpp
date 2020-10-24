@@ -467,29 +467,30 @@ Vec4 FullSystem::trackNewCoarse(FrameHessian* fh)
 	return Vec4(achievedRes[0], flowVecs[0], flowVecs[1], flowVecs[2]);
 }
 
+// 对一帧数据先大致得到跟踪结果
 void FullSystem::traceNewCoarse(FrameHessian* fh)
 {
+	// 构建地图线程锁
 	boost::unique_lock<boost::mutex> lock(mapMutex);
-
+	// 一些茶树
 	int trace_total=0, trace_good=0, trace_oob=0, trace_out=0, trace_skip=0, trace_badcondition=0, trace_uninitialized=0;
-
+	// 畸变矩阵
 	Mat33f K = Mat33f::Identity();
 	K(0,0) = Hcalib.fxl();
 	K(1,1) = Hcalib.fyl();
 	K(0,2) = Hcalib.cxl();
 	K(1,2) = Hcalib.cyl();
-
 	for(FrameHessian* host : frameHessians)		// go through all active frames
-	{
-
+	{// 遍历当前所有关键帧
+		// 参考帧到当前帧率的坐标变换
 		SE3 hostToNew = fh->PRE_worldToCam * host->PRE_camToWorld;
 		Mat33f KRKi = K * hostToNew.rotationMatrix().cast<float>() * K.inverse();
 		Vec3f Kt = K * hostToNew.translation().cast<float>();
-
+		// 仿射变换矩阵
 		Vec2f aff = AffLight::fromToVecExposure(host->ab_exposure, fh->ab_exposure, host->aff_g2l(), fh->aff_g2l()).cast<float>();
 
 		for(ImmaturePoint* ph : host->immaturePoints)
-		{
+		{// 遍历所有的点
 			ph->traceOn(fh, KRKi, Kt, aff, &Hcalib, false );
 
 			if(ph->lastTraceStatus==ImmaturePointStatus::IPS_GOOD) trace_good++;
@@ -1021,6 +1022,7 @@ void FullSystem::mappingLoop()
 			if(setting_realTimeMaxKF || needNewKFAfter >= frameHessians.back()->shell->id)
 			{
 				lock.unlock();
+				// 对关键帧的处理
 				makeKeyFrame(fh);
 				needToKetchupMapping=false;
 				lock.lock();
@@ -1028,6 +1030,7 @@ void FullSystem::mappingLoop()
 			else
 			{
 				lock.unlock();
+				// 非关键帧的处理
 				makeNonKeyFrame(fh);
 				lock.lock();
 			}
@@ -1056,6 +1059,7 @@ void FullSystem::makeNonKeyFrame( FrameHessian* fh)
 		boost::unique_lock<boost::mutex> crlock(shellPoseMutex);
 		assert(fh->shell->trackingRef != 0);
 		fh->shell->camToWorld = fh->shell->trackingRef->camToWorld * fh->shell->camToTrackingRef;
+		// 设置初始值
 		fh->setEvalPT_scaled(fh->shell->camToWorld.inverse(),fh->shell->aff_g2l);
 	}
 	// 大致对其得到结果就行了
@@ -1079,15 +1083,19 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
 	boost::unique_lock<boost::mutex> lock(mapMutex);
 	
 	// =========================== Flag Frames to be Marginalized. =========================
+	// 新的一个关键帧进入，就要Marginalization一个关键帧，保持窗口内关键帧数据固定
+	// 函数确定了需要被边缘化的关键帧
 	flagFramesForMarginalization(fh);
 
 	// =========================== add New Frame to Hessian Struct. =========================
+	// 添加新的一帧到new Frame中
 	fh->idx = frameHessians.size();
 	frameHessians.push_back(fh);
 	fh->frameID = allKeyFramesHistory.size();
 	allKeyFramesHistory.push_back(fh->shell);
+	// 插入一帧
 	ef->insertFrame(fh, &Hcalib);
-
+	// 函数
 	setPrecalcValues();
 
 	// =========================== add new residuals for old points =========================
@@ -1111,7 +1119,7 @@ void FullSystem::makeKeyFrame( FrameHessian* fh)
 	ef->makeIDX();
 
 	// =========================== OPTIMIZE ALL =========================
-
+	// 优化函数
 	fh->frameEnergyTH = frameHessians.back()->frameEnergyTH;
 	float rmse = optimize(setting_maxOptIterations);
 

@@ -53,14 +53,15 @@
 namespace dso
 {
 
-
-
+// 确定需要Marginalization的帧 
 void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 {
+	// 如果设置的min > max 
 	if(setting_minFrameAge > setting_maxFrames)
 	{
 		for(int i=setting_maxFrames;i<(int)frameHessians.size();i++)
 		{
+			// 超过 setting_maxFrames 的部分都直接被认为需要被边缘化
 			FrameHessian* fh = frameHessians[i-setting_maxFrames];
 			fh->flaggedForMarginalization = true;
 		}
@@ -70,8 +71,9 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 
 	int flagged = 0;
 	// marginalize all frames that have not enough points.
+	// 边缘化所有没有足够点的关键帧
 	for(int i=0;i<(int)frameHessians.size();i++)
-	{
+	{// 遍历所有的关键帧
 		FrameHessian* fh = frameHessians[i];
 		int in = fh->pointHessians.size() + fh->immaturePoints.size();
 		int out = fh->pointHessiansMarginalized.size() + fh->pointHessiansOut.size();
@@ -80,7 +82,7 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 		Vec2 refToFh=AffLight::fromToVecExposure(frameHessians.back()->ab_exposure, fh->ab_exposure,
 				frameHessians.back()->aff_g2l(), fh->aff_g2l());
 
-
+		// 如果点不够多，就会被认为需要边缘化
 		if( (in < setting_minPointsRemaining *(in+out) || fabs(logf((float)refToFh[0])) > setting_maxLogAffFacInWindow)
 				&& ((int)frameHessians.size())-flagged > setting_minFrames)
 		{
@@ -105,18 +107,19 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 	}
 
 	// marginalize one.
+	// 减去点较少的关键帧后，依旧比设定数量多，则需要选择其中一个进行边缘化
 	if((int)frameHessians.size()-flagged >= setting_maxFrames)
 	{
 		double smallestScore = 1;
 		FrameHessian* toMarginalize=0;
+		// 最后一个关键帧
 		FrameHessian* latest = frameHessians.back();
 
-
 		for(FrameHessian* fh : frameHessians)
-		{
+		{// 遍历所有的关键帧
 			if(fh->frameID > latest->frameID-setting_minFrameAge || fh->frameID == 0) continue;
 			//if(fh==frameHessians.front() == 0) continue;
-
+			// 计算关键帧的得分
 			double distScore = 0;
 			for(FrameFramePrecalc &ffh : fh->targetPrecalc)
 			{
@@ -124,9 +127,10 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 				distScore += 1/(1e-5+ffh.distanceLL);
 
 			}
+			// 乘上距离，越远的得分越低
 			distScore *= -sqrtf(fh->targetPrecalc.back().distanceLL);
 
-
+			// 得到得分最低的关键帧，标记为需要被边缘化
 			if(distScore < smallestScore)
 			{
 				smallestScore = distScore;

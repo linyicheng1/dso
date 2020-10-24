@@ -91,7 +91,7 @@ private:
 
 
 	void makeCoarseDepthL0(std::vector<FrameHessian*> frameHessians);
-	float* idepth[PYR_LEVELS];
+	float* idepth[PYR_LEVELS];// 存储了各种深度数据
 	float* weightSums[PYR_LEVELS];
 	float* weightSums_bak[PYR_LEVELS];
 
